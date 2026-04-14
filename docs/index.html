@@ -9,63 +9,106 @@
 </head>
 <body>
   <div class="app">
-    <!-- Header -->
+    <!-- Header bar -->
     <header class="header">
       <div class="header-inner">
-        <div class="logo">
-          <span class="logo-icon">&#9878;</span>
-          <div>
-            <h1>LegalBot</h1>
-            <span class="subtitle">CommLegal FAQ Assistant</span>
-          </div>
-        </div>
-        <span class="header-badge">36 FAQs loaded</span>
+        <a href="./" class="header-logo">
+          <svg class="gh-mark" viewBox="0 0 16 16" width="24" height="24" fill="currentColor"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path></svg>
+          <span class="header-title">LegalBot</span>
+        </a>
+        <nav class="header-nav">
+          <a href="https://github.com/github/commlegal" target="_blank" class="header-link">CommLegal Repo</a>
+          <a href="https://github.com/github/commlegal/issues/new/choose" target="_blank" class="header-link btn-file-issue">File an issue</a>
+        </nav>
       </div>
     </header>
 
-    <!-- Main content -->
     <main class="main">
-      <!-- Search / Ask -->
-      <div class="search-section">
-        <div class="search-box">
-          <input type="text" id="search-input" placeholder="Ask a legal question (e.g., &quot;Can we sign a customer's NDA?&quot;)" autocomplete="off">
-          <button id="ask-btn" class="btn btn-primary ask-btn">
-            <span id="ask-text">Search</span>
-          </button>
+      <!-- Hero / Landing -->
+      <div id="hero" class="hero">
+        <div class="hero-logo">
+          <svg viewBox="0 0 80 80" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="80" height="80" rx="16" fill="#0969da"/>
+            <g transform="translate(14, 12)" fill="#fff">
+              <rect x="23" y="0" width="6" height="36" rx="3"/>
+              <circle cx="26" cy="8" r="5" fill="none" stroke="#fff" stroke-width="3"/>
+              <path d="M6 22 L26 14 L46 22" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <rect x="2" y="22" width="14" height="3" rx="1.5"/>
+              <rect x="36" y="22" width="14" height="3" rx="1.5"/>
+              <path d="M2 25 Q9 34 16 25" stroke="#fff" stroke-width="2.5" fill="none"/>
+              <path d="M36 25 Q43 34 50 25" stroke="#fff" stroke-width="2.5" fill="none"/>
+              <rect x="8" y="40" width="36" height="5" rx="2.5"/>
+              <rect x="0" y="48" width="52" height="6" rx="3"/>
+            </g>
+          </svg>
         </div>
-        <div class="search-hint">
-          <span id="mode-label">Type a question and press Enter or click Search.</span>
+        <h1 class="hero-title">LegalBot</h1>
+        <p class="hero-subtitle">Your CommLegal FAQ assistant. Ask any commercial legal question.</p>
+        <div class="search-box hero-search">
+          <svg class="search-icon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"></path></svg>
+          <input type="text" id="search-input" placeholder="Try: &quot;Can we sign a customer's NDA?&quot;" autocomplete="off">
+        </div>
+        <div class="quick-links">
+          <button class="quick-chip" data-q="NDA">NDAs</button>
+          <button class="quick-chip" data-q="DPA">DPA / Privacy</button>
+          <button class="quick-chip" data-q="Copilot indemnity">Copilot</button>
+          <button class="quick-chip" data-q="customer contract redline">Negotiations</button>
+          <button class="quick-chip" data-q="DORA">DORA</button>
+          <button class="quick-chip" data-q="code of conduct">Supplier Code</button>
         </div>
       </div>
 
-      <!-- Answer Area -->
-      <div id="ai-response" class="ai-response hidden">
-        <div class="ai-header">
-          <span class="ai-icon">&#9878;</span>
-          <strong>LegalBot</strong>
-          <span id="confidence-badge" class="confidence-badge"></span>
+      <!-- Results (hidden until search) -->
+      <div id="results-section" class="results-section hidden">
+        <div class="results-search-bar">
+          <svg class="search-icon" viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"></path></svg>
+          <input type="text" id="search-input-results" placeholder="Ask another question..." autocomplete="off">
+          <button id="clear-btn" class="clear-btn" title="Clear search">&times;</button>
         </div>
-        <div id="ai-answer" class="ai-answer"></div>
-        <div id="related-links" class="related-links"></div>
-        <div class="ai-disclaimer">
-          This response is generated from the CommLegal FAQ. It is not legal advice. For deal-specific questions, please <a href="https://github.com/github/commlegal/issues/new/choose" target="_blank">file a CommLegal issue</a> or DM your assigned attorney.
-        </div>
-      </div>
 
-      <!-- FAQ Browse Section -->
-      <div class="faq-section">
-        <h2 id="faq-heading">Browse FAQs</h2>
-        <div id="faq-categories" class="faq-categories"></div>
-        <div id="faq-list" class="faq-list"></div>
-        <div id="no-results" class="no-results hidden">
-          No matching FAQ entries found. Try rephrasing your question or <a href="https://github.com/github/commlegal/issues/new/choose" target="_blank">file a CommLegal issue</a>.
+        <!-- Answer card -->
+        <div id="ai-response" class="ai-response hidden">
+          <div class="ai-header">
+            <svg class="ai-logo" viewBox="0 0 80 80" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="80" height="80" rx="16" fill="#0969da"/>
+              <g transform="translate(14, 12)" fill="#fff">
+                <rect x="23" y="0" width="6" height="36" rx="3"/>
+                <circle cx="26" cy="8" r="5" fill="none" stroke="#fff" stroke-width="3"/>
+                <path d="M6 22 L26 14 L46 22" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
+                <rect x="2" y="22" width="14" height="3" rx="1.5"/>
+                <rect x="36" y="22" width="14" height="3" rx="1.5"/>
+                <path d="M2 25 Q9 34 16 25" stroke="#fff" stroke-width="2.5" fill="none"/>
+                <path d="M36 25 Q43 34 50 25" stroke="#fff" stroke-width="2.5" fill="none"/>
+                <rect x="8" y="40" width="36" height="5" rx="2.5"/>
+                <rect x="0" y="48" width="52" height="6" rx="3"/>
+              </g>
+            </svg>
+            <strong>LegalBot</strong>
+            <span id="confidence-badge" class="confidence-badge"></span>
+          </div>
+          <div id="ai-answer" class="ai-answer"></div>
+          <div id="related-links" class="related-links"></div>
+          <div class="ai-disclaimer">
+            This response is from the CommLegal FAQ and is not legal advice. For deal-specific questions, <a href="https://github.com/github/commlegal/issues/new/choose" target="_blank">file a CommLegal issue</a> or DM your assigned attorney.
+          </div>
+        </div>
+
+        <!-- FAQ matches -->
+        <div class="faq-section">
+          <div class="faq-section-header">
+            <h2 id="faq-heading">Matching FAQs</h2>
+            <div id="faq-categories" class="faq-categories"></div>
+          </div>
+          <div id="faq-list" class="faq-list"></div>
+          <div id="no-results" class="no-results hidden">
+            No matching FAQ entries found. Try rephrasing your question or <a href="https://github.com/github/commlegal/issues/new/choose" target="_blank">file a CommLegal issue</a>.
+          </div>
         </div>
       </div>
     </main>
 
-    <!-- Footer -->
     <footer class="footer">
-      <p>Built by CommLegal | Powered by <a href="https://github.com/marketplace/models" target="_blank">GitHub Models</a> | <a href="https://github.com/github/commlegal" target="_blank">CommLegal Repo</a></p>
+      <p>Built by the CommLegal team &middot; <a href="https://github.com/github/commlegal" target="_blank">github/commlegal</a></p>
     </footer>
   </div>
 

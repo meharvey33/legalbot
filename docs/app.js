@@ -9,7 +9,10 @@
 
   // DOM refs
   const searchInput     = document.getElementById('search-input');
-  const askBtn          = document.getElementById('ask-btn');
+  const searchResults   = document.getElementById('search-input-results');
+  const clearBtn        = document.getElementById('clear-btn');
+  const hero            = document.getElementById('hero');
+  const resultsSection  = document.getElementById('results-section');
   const aiResponseEl    = document.getElementById('ai-response');
   const aiAnswerEl      = document.getElementById('ai-answer');
   const relatedLinks    = document.getElementById('related-links');
@@ -228,8 +231,6 @@
     const resp = await fetch('faq.json');
     faqData = await resp.json();
     buildIndex();
-    renderCategories();
-    renderFAQ(faqData);
   }
 
   function renderCategories() {
@@ -272,17 +273,34 @@
   }
 
   // -----------------------------------------------------------------------
+  // View switching: hero <-> results
+  // -----------------------------------------------------------------------
+  function showResults(query) {
+    hero.classList.add('hidden');
+    resultsSection.classList.remove('hidden');
+    searchResults.value = query;
+    renderCategories();
+    filterAndRender(query);
+  }
+
+  function showHero() {
+    hero.classList.remove('hidden');
+    resultsSection.classList.add('hidden');
+    aiResponseEl.classList.add('hidden');
+    searchInput.value = '';
+    searchResults.value = '';
+    activeCategory = null;
+    searchInput.focus();
+  }
+
+  // -----------------------------------------------------------------------
   // Main search + display
   // -----------------------------------------------------------------------
-  function filterAndRender() {
-    const query = searchInput.value.trim();
+  function filterAndRender(queryOverride) {
+    const query = (queryOverride !== undefined ? queryOverride : searchResults.value).trim();
 
     if (!query) {
-      aiResponseEl.classList.add('hidden');
-      var items = faqData;
-      if (activeCategory) items = items.filter(e => e.category === activeCategory);
-      faqHeading.textContent = 'Browse FAQs';
-      renderFAQ(items);
+      showHero();
       return;
     }
 
@@ -349,13 +367,22 @@
   // -----------------------------------------------------------------------
   // Event listeners
   // -----------------------------------------------------------------------
-  var debounceTimer;
-  searchInput.addEventListener('input', () => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(filterAndRender, 150);
+
+  // Hero search input
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && searchInput.value.trim()) {
+      e.preventDefault();
+      showResults(searchInput.value.trim());
+    }
   });
 
-  searchInput.addEventListener('keydown', (e) => {
+  // Results search input
+  var debounceTimer;
+  searchResults.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => filterAndRender(), 200);
+  });
+  searchResults.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       clearTimeout(debounceTimer);
@@ -363,9 +390,14 @@
     }
   });
 
-  askBtn.addEventListener('click', () => {
-    clearTimeout(debounceTimer);
-    filterAndRender();
+  // Clear button
+  clearBtn.addEventListener('click', showHero);
+
+  // Quick topic chips
+  document.querySelectorAll('.quick-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      showResults(chip.dataset.q);
+    });
   });
 
   searchInput.focus();
