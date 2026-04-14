@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LegalBot - CommLegal FAQ Assistant</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9878;</text></svg>">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-icon">&#9878;</span>
+          <div>
+            <h1>LegalBot</h1>
+            <span class="subtitle">CommLegal FAQ Assistant</span>
+          </div>
+        </div>
+        <button id="token-btn" class="token-btn" title="Configure GitHub Token">
+          <span id="token-status" class="token-dot disconnected"></span>
+          AI Settings
+        </button>
+      </div>
+    </header>
+
+    <!-- Token Modal -->
+    <div id="token-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>GitHub Models API Token</h2>
+        <p>To enable AI-powered answers, paste a GitHub Personal Access Token with the <code>models:read</code> scope. Your token stays in your browser and is never sent to any server other than the GitHub Models API.</p>
+        <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+        <div class="modal-actions">
+          <button id="token-save" class="btn btn-primary">Save Token</button>
+          <button id="token-clear" class="btn btn-secondary">Clear Token</button>
+          <button id="token-close" class="btn btn-ghost">Cancel</button>
+        </div>
+        <p class="token-hint">Create a token at <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></p>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <main class="main">
+      <!-- Search / Ask -->
+      <div class="search-section">
+        <div class="search-box">
+          <input type="text" id="search-input" placeholder="Ask a legal question (e.g., &quot;Can we sign a customer's NDA?&quot;)" autocomplete="off">
+          <button id="ask-btn" class="btn btn-primary ask-btn" disabled>
+            <span id="ask-text">Ask LegalBot</span>
+            <span id="ask-spinner" class="spinner hidden"></span>
+          </button>
+        </div>
+        <div class="search-hint">
+          <span id="mode-label"></span>
+        </div>
+      </div>
+
+      <!-- AI Response Area -->
+      <div id="ai-response" class="ai-response hidden">
+        <div class="ai-header">
+          <span class="ai-icon">&#9878;</span>
+          <strong>LegalBot</strong>
+        </div>
+        <div id="ai-answer" class="ai-answer"></div>
+        <div class="ai-disclaimer">
+          This is an AI-generated response based on the CommLegal FAQ. It is not legal advice. For deal-specific questions, please <a href="https://github.com/github/commlegal/issues/new/choose" target="_blank">file a CommLegal issue</a> or DM your assigned attorney.
+        </div>
+      </div>
+
+      <!-- FAQ Browse Section -->
+      <div class="faq-section">
+        <h2 id="faq-heading">Browse FAQs</h2>
+        <div id="faq-categories" class="faq-categories"></div>
+        <div id="faq-list" class="faq-list"></div>
+        <div id="no-results" class="no-results hidden">
+          No matching FAQ entries found. Try rephrasing your question or <a href="https://github.com/github/commlegal/issues/new/choose" target="_blank">file a CommLegal issue</a>.
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>Built by CommLegal | Powered by <a href="https://github.com/marketplace/models" target="_blank">GitHub Models</a> | <a href="https://github.com/github/commlegal" target="_blank">CommLegal Repo</a></p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
