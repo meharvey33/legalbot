@@ -4,112 +4,246 @@
   // -----------------------------------------------------------------------
   // State
   // -----------------------------------------------------------------------
-  let faqData       = [];
+  let faqData = [];
   let activeCategory = null;
-  let githubToken    = sessionStorage.getItem('gh_models_token') || '';
 
   // DOM refs
-  const searchInput   = document.getElementById('search-input');
-  const askBtn        = document.getElementById('ask-btn');
-  const askText       = document.getElementById('ask-text');
-  const askSpinner    = document.getElementById('ask-spinner');
-  const aiResponseEl  = document.getElementById('ai-response');
-  const aiAnswerEl    = document.getElementById('ai-answer');
-  const faqHeading    = document.getElementById('faq-heading');
-  const faqCategories = document.getElementById('faq-categories');
-  const faqList       = document.getElementById('faq-list');
-  const noResults     = document.getElementById('no-results');
-  const modeLabel     = document.getElementById('mode-label');
-  const tokenBtn      = document.getElementById('token-btn');
-  const tokenModal    = document.getElementById('token-modal');
-  const tokenInput    = document.getElementById('token-input');
-  const tokenSave     = document.getElementById('token-save');
-  const tokenClear    = document.getElementById('token-clear');
-  const tokenClose    = document.getElementById('token-close');
-  const tokenStatus   = document.getElementById('token-status');
+  const searchInput     = document.getElementById('search-input');
+  const askBtn          = document.getElementById('ask-btn');
+  const aiResponseEl    = document.getElementById('ai-response');
+  const aiAnswerEl      = document.getElementById('ai-answer');
+  const relatedLinks    = document.getElementById('related-links');
+  const confidenceBadge = document.getElementById('confidence-badge');
+  const faqHeading      = document.getElementById('faq-heading');
+  const faqCategories   = document.getElementById('faq-categories');
+  const faqList         = document.getElementById('faq-list');
+  const noResults       = document.getElementById('no-results');
 
   // -----------------------------------------------------------------------
-  // GitHub Models API
+  // Synonym expansion dictionary
   // -----------------------------------------------------------------------
-  const MODELS_URL = 'https://models.github.ai/inference/chat/completions';
-  const MODEL_NAME = 'openai/gpt-4.1';
+  const SYNONYMS = {
+    nda:           ['nda', 'non-disclosure', 'non disclosure', 'confidentiality', 'confidential'],
+    dpa:           ['dpa', 'data protection', 'data processing', 'gdpr', 'privacy', 'personal data'],
+    contract:      ['contract', 'agreement', 'terms', 'gca', 'customer agreement', 'legal terms'],
+    negotiate:     ['negotiate', 'redline', 'redlines', 'amend', 'change', 'modify', 'amendment'],
+    copilot:       ['copilot', 'co-pilot', 'ai', 'code completion', 'genai', 'generative'],
+    indemnity:     ['indemnity', 'indemnification', 'indemnify', 'liability', 'ip protection'],
+    sign:          ['sign', 'execute', 'signature', 'countersign', 'wet signature'],
+    customer:      ['customer', 'client', 'buyer', 'enterprise', 'prospect', 'account'],
+    microsoft:     ['microsoft', 'msft', 'ms', 'co-sell', 'cosell'],
+    threshold:     ['threshold', 'minimum', 'arr', 'revenue', 'deal size', '$100k', '$500k'],
+    preview:       ['preview', 'beta', 'pre-release', 'prerelease', 'experimental'],
+    questionnaire: ['questionnaire', 'security questionnaire', 'vendor questionnaire', 'assessment'],
+    insurance:     ['insurance', 'coverage', 'policy', 'certificate'],
+    governing:     ['governing law', 'jurisdiction', 'venue', 'applicable law'],
+    supplier:      ['supplier', 'vendor', 'code of conduct', 'coc', 'supplier code'],
+    dora:          ['dora', 'digital operational resilience', 'eu regulation'],
+    training:      ['training', 'model training', 'data usage', 'third party model', '3p model'],
+    azure:         ['azure', 'metered', 'billing', 'consumption'],
+  };
 
-  const SYSTEM_PROMPT = `You are LegalBot, an AI assistant for GitHub's Commercial Legal team. You help GitHub employees (account executives, sales engineers, customer success managers) get quick answers to common commercial legal questions.
-
-RULES:
-1. Answer ONLY based on the FAQ content provided in the user's message. Do not invent legal positions.
-2. If the FAQ does not cover the question, say so clearly and direct them to file a CommLegal issue at https://github.com/github/commlegal/issues/new/choose
-3. You are NOT a lawyer. This is NOT legal advice. You surface existing FAQ answers.
-4. Be concise and practical. Use bullet points. Include relevant links from the FAQ.
-5. If a question is about a specific customer deal or requires legal judgment, direct them to file a CommLegal issue.
-6. When quoting ARR thresholds or policies, be precise.
-7. Format responses in Markdown. Use **bold** for emphasis, bullet lists, and include hyperlinks.
-8. If the message is just a greeting or clearly not a legal question, respond briefly and friendly.`;
-
-  // -----------------------------------------------------------------------
-  // Token management
-  // -----------------------------------------------------------------------
-  function updateTokenUI() {
-    if (githubToken) {
-      tokenStatus.className = 'token-dot connected';
-      modeLabel.textContent = 'AI-powered answers enabled. Type a question and press "Ask LegalBot".';
-    } else {
-      tokenStatus.className = 'token-dot disconnected';
-      modeLabel.innerHTML = 'FAQ search active. <strong>Add a GitHub token</strong> (top right) to enable AI-powered answers.';
+  // Build reverse lookup: word -> [expanded terms]
+  const EXPANSION_MAP = {};
+  for (const terms of Object.values(SYNONYMS)) {
+    for (const term of terms) {
+      if (!EXPANSION_MAP[term]) EXPANSION_MAP[term] = [];
+      for (const other of terms) {
+        if (other !== term && !EXPANSION_MAP[term].includes(other)) {
+          EXPANSION_MAP[term].push(other);
+        }
+      }
     }
   }
 
-  tokenBtn.addEventListener('click', () => {
-    tokenInput.value = githubToken;
-    tokenModal.classList.remove('hidden');
-    tokenInput.focus();
-  });
+  // -----------------------------------------------------------------------
+  // TF-IDF search engine
+  // -----------------------------------------------------------------------
+  let docFreq = {};
+  let faqTokens = [];
 
-  tokenSave.addEventListener('click', () => {
-    githubToken = tokenInput.value.trim();
-    if (githubToken) {
-      sessionStorage.setItem('gh_models_token', githubToken);
+  function tokenize(text) {
+    return text.toLowerCase()
+      .replace(/[^a-z0-9$\-/]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length > 1);
+  }
+
+  function buildIndex() {
+    docFreq = {};
+    faqTokens = [];
+
+    for (const item of faqData) {
+      const text = item.question + ' ' + item.answer + ' ' + item.category;
+      const tokens = tokenize(text);
+      const uniqueTokens = [...new Set(tokens)];
+      faqTokens.push({ tokens, uniqueTokens });
+
+      for (const t of uniqueTokens) {
+        docFreq[t] = (docFreq[t] || 0) + 1;
+      }
     }
-    tokenModal.classList.add('hidden');
-    updateTokenUI();
-  });
+  }
 
-  tokenClear.addEventListener('click', () => {
-    githubToken = '';
-    sessionStorage.removeItem('gh_models_token');
-    tokenInput.value = '';
-    tokenModal.classList.add('hidden');
-    updateTokenUI();
-  });
+  function expandQuery(queryTerms) {
+    const expanded = new Set(queryTerms);
+    for (const term of queryTerms) {
+      if (EXPANSION_MAP[term]) {
+        for (const syn of EXPANSION_MAP[term]) expanded.add(syn);
+      }
+      for (const terms of Object.values(SYNONYMS)) {
+        for (const synTerm of terms) {
+          if (synTerm.includes(term) && synTerm !== term) {
+            for (const other of terms) expanded.add(other);
+          }
+        }
+      }
+    }
+    // Check bigrams
+    for (let i = 0; i < queryTerms.length - 1; i++) {
+      const bigram = queryTerms[i] + ' ' + queryTerms[i + 1];
+      if (EXPANSION_MAP[bigram]) {
+        for (const syn of EXPANSION_MAP[bigram]) expanded.add(syn);
+      }
+    }
+    return [...expanded];
+  }
 
-  tokenClose.addEventListener('click', () => tokenModal.classList.add('hidden'));
+  function scoreEntry(entryIndex, queryTerms) {
+    const { tokens, uniqueTokens } = faqTokens[entryIndex];
+    const item = faqData[entryIndex];
+    const N = faqData.length;
+    const fullText = (item.question + ' ' + item.answer).toLowerCase();
 
-  tokenModal.addEventListener('click', (e) => {
-    if (e.target === tokenModal) tokenModal.classList.add('hidden');
-  });
+    let score = 0;
+    let matchedTerms = 0;
+
+    for (const qt of queryTerms) {
+      if (item.question.toLowerCase().includes(qt)) {
+        score += 10;
+        matchedTerms++;
+      } else if (fullText.includes(qt)) {
+        score += 3;
+        matchedTerms++;
+      }
+
+      if (uniqueTokens.includes(qt)) {
+        const tf = tokens.filter(t => t === qt).length / tokens.length;
+        const idf = Math.log(N / (1 + (docFreq[qt] || 0)));
+        score += tf * idf * 5;
+      }
+    }
+
+    // Reward covering more of the query
+    const coverage = queryTerms.length > 0 ? matchedTerms / queryTerms.length : 0;
+    score *= (0.5 + coverage);
+
+    return score;
+  }
+
+  function search(query) {
+    const rawTerms = tokenize(query);
+    if (rawTerms.length === 0) return [];
+
+    const queryLower = query.toLowerCase().trim();
+    const expandedTerms = expandQuery(rawTerms);
+
+    const scored = faqData.map((item, i) => {
+      let score = scoreEntry(i, expandedTerms);
+      // Big bonus for near-exact question match
+      if (item.question.toLowerCase().includes(queryLower)) score += 50;
+      return { ...item, score, index: i };
+    });
+
+    return scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
+  }
 
   // -----------------------------------------------------------------------
-  // FAQ loading and rendering
+  // Answer generation
+  // -----------------------------------------------------------------------
+  function generateAnswer(query, results) {
+    if (results.length === 0) {
+      return {
+        answer: "I couldn't find a matching FAQ for that question. This might be a deal-specific or complex question that needs attorney review.",
+        action: 'Please <a href="https://github.com/github/commlegal/issues/new/choose" target="_blank">file a CommLegal issue</a> or reach out to your assigned attorney in <strong>#legal</strong>.',
+        confidence: 'none',
+      };
+    }
+
+    const best = results[0];
+    const secondBest = results[1];
+
+    if (best.score > 15 && (!secondBest || best.score > secondBest.score * 1.5)) {
+      return {
+        answer: formatAnswerHTML(best.answer),
+        source: best.question,
+        category: best.category,
+        confidence: 'high',
+        related: results.slice(1, 4),
+      };
+    }
+
+    if (best.score > 5) {
+      return {
+        answer: formatAnswerHTML(best.answer),
+        source: best.question,
+        category: best.category,
+        confidence: 'medium',
+        related: results.slice(1, 4),
+        note: 'This is a likely match, but you may also want to check the related questions below.',
+      };
+    }
+
+    return {
+      answer: formatAnswerHTML(best.answer),
+      source: best.question,
+      category: best.category,
+      confidence: 'low',
+      related: results.slice(1, 4),
+      note: "This is the closest match I found, but it may not fully answer your question. Consider filing a CommLegal issue for a more specific answer.",
+    };
+  }
+
+  function formatAnswerHTML(text) {
+    let html = escapeHTML(text);
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    html = html.replace(/(https?:\/\/[^\s<,.)]+)/g, function (match) {
+      return '<a href="' + match + '" target="_blank">' + match + '</a>';
+    });
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = html.replace(/\n/g, '<br>');
+    return '<p>' + html + '</p>';
+  }
+
+  function escapeHTML(str) {
+    const el = document.createElement('div');
+    el.textContent = str;
+    return el.innerHTML;
+  }
+
+  // -----------------------------------------------------------------------
+  // FAQ rendering
   // -----------------------------------------------------------------------
   async function loadFAQ() {
     const resp = await fetch('faq.json');
     faqData = await resp.json();
+    buildIndex();
     renderCategories();
     renderFAQ(faqData);
   }
 
   function renderCategories() {
     const cats = [...new Set(faqData.map(e => e.category))];
-    faqCategories.innerHTML = `
-      <button class="category-chip active" data-cat="">All</button>
-      ${cats.map(c => `<button class="category-chip" data-cat="${c}">${c}</button>`).join('')}
-    `;
+    faqCategories.innerHTML =
+      '<button class="category-chip active" data-cat="">All</button>' +
+      cats.map(c => '<button class="category-chip" data-cat="' + escapeHTML(c) + '">' + escapeHTML(c) + '</button>').join('');
+
     faqCategories.querySelectorAll('.category-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         activeCategory = chip.dataset.cat || null;
         faqCategories.querySelectorAll('.category-chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
-        filterFAQ();
+        filterAndRender();
       });
     });
   }
@@ -121,218 +255,120 @@ RULES:
       return;
     }
     noResults.classList.add('hidden');
-    faqList.innerHTML = items.map(item => `
-      <div class="faq-item" data-id="${item.id}">
-        <div class="faq-question">
-          <span>${escapeHTML(item.question)}</span>
-          <span class="category-tag">${escapeHTML(item.category)}</span>
-          <span class="chevron">&#9656;</span>
-        </div>
-        <div class="faq-answer">${formatAnswer(item.answer)}</div>
-      </div>
-    `).join('');
+    faqList.innerHTML = items.map(item =>
+      '<div class="faq-item" data-id="' + item.id + '">' +
+        '<div class="faq-question">' +
+          '<span>' + escapeHTML(item.question) + '</span>' +
+          '<span class="category-tag">' + escapeHTML(item.category) + '</span>' +
+          '<span class="chevron">&#9656;</span>' +
+        '</div>' +
+        '<div class="faq-answer">' + formatAnswerHTML(item.answer) + '</div>' +
+      '</div>'
+    ).join('');
 
     faqList.querySelectorAll('.faq-question').forEach(q => {
-      q.addEventListener('click', () => {
-        q.parentElement.classList.toggle('open');
-      });
+      q.addEventListener('click', () => q.parentElement.classList.toggle('open'));
     });
   }
 
-  function formatAnswer(text) {
-    // Convert markdown links to HTML
-    let html = escapeHTML(text);
-    // Restore links: [text](url) -> <a>
-    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-    // Bare URLs
-    html = html.replace(/(https?:\/\/[^\s<]+)/g, (match) => {
-      if (match.includes('</a>') || match.includes('href=')) return match;
-      return `<a href="${match}" target="_blank">${match}</a>`;
-    });
-    // Line breaks
-    html = html.replace(/\n/g, '<br>');
-    return html;
-  }
-
-  function escapeHTML(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
   // -----------------------------------------------------------------------
-  // Search / filter
+  // Main search + display
   // -----------------------------------------------------------------------
-  function filterFAQ() {
-    const query = searchInput.value.toLowerCase().trim();
-    let results = faqData;
+  function filterAndRender() {
+    const query = searchInput.value.trim();
 
-    if (activeCategory) {
-      results = results.filter(e => e.category === activeCategory);
-    }
-
-    if (query) {
-      const terms = query.split(/\s+/);
-      results = results.filter(item => {
-        const haystack = (item.question + ' ' + item.answer + ' ' + item.category).toLowerCase();
-        return terms.every(t => haystack.includes(t));
-      });
-      faqHeading.textContent = `${results.length} result${results.length !== 1 ? 's' : ''} found`;
-    } else {
+    if (!query) {
+      aiResponseEl.classList.add('hidden');
+      var items = faqData;
+      if (activeCategory) items = items.filter(e => e.category === activeCategory);
       faqHeading.textContent = 'Browse FAQs';
-    }
-
-    renderFAQ(results);
-  }
-
-  // Debounced search
-  let searchTimeout;
-  searchInput.addEventListener('input', () => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      filterFAQ();
-      askBtn.disabled = !searchInput.value.trim();
-    }, 200);
-  });
-
-  searchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && searchInput.value.trim()) {
-      e.preventDefault();
-      handleAsk();
-    }
-  });
-
-  askBtn.addEventListener('click', handleAsk);
-
-  // -----------------------------------------------------------------------
-  // AI Ask
-  // -----------------------------------------------------------------------
-  async function handleAsk() {
-    const question = searchInput.value.trim();
-    if (!question) return;
-
-    if (!githubToken) {
-      // No token - just do keyword search and show a hint
-      filterFAQ();
-      aiResponseEl.classList.remove('hidden');
-      aiAnswerEl.innerHTML = '<p>To get an AI-powered answer, click <strong>"AI Settings"</strong> in the top right and add your GitHub Personal Access Token.</p><p>In the meantime, I\'ve filtered the FAQ below to match your query.</p>';
+      renderFAQ(items);
       return;
     }
 
-    // Show loading state
-    askBtn.disabled = true;
-    askText.textContent = 'Thinking...';
-    askSpinner.classList.remove('hidden');
+    var results = search(query);
+    if (activeCategory) results = results.filter(e => e.category === activeCategory);
+
+    showAnswer(query, results);
+
+    faqHeading.textContent = results.length > 0
+      ? results.length + ' matching FAQ' + (results.length !== 1 ? 's' : '')
+      : 'No matches';
+    renderFAQ(results);
+  }
+
+  function showAnswer(query, results) {
+    var result = generateAnswer(query, results);
     aiResponseEl.classList.remove('hidden');
-    aiAnswerEl.innerHTML = '<p style="color: var(--text-muted);">Searching CommLegal resources...</p>';
 
-    try {
-      // Build context from matching FAQ entries
-      const faqContext = buildFAQContext(question);
-      const userMessage = `Question: ${question}\n\nRelevant FAQ content:\n${faqContext}`;
+    var badges = {
+      high:   { text: 'High confidence', cls: 'badge-high' },
+      medium: { text: 'Partial match',   cls: 'badge-medium' },
+      low:    { text: 'Low confidence',   cls: 'badge-low' },
+      none:   { text: 'No match found',   cls: 'badge-none' },
+    };
+    var badge = badges[result.confidence];
+    confidenceBadge.textContent = badge.text;
+    confidenceBadge.className = 'confidence-badge ' + badge.cls;
 
-      const response = await fetch(MODELS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${githubToken}`,
-        },
-        body: JSON.stringify({
-          model: MODEL_NAME,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userMessage },
-          ],
-          temperature: 0.3,
-          max_tokens: 1024,
-        }),
+    var html = '';
+    if (result.source) {
+      html += '<div class="answer-source"><strong>FAQ:</strong> ' + escapeHTML(result.source) + '</div>';
+    }
+    html += '<div class="answer-body">' + result.answer + '</div>';
+    if (result.note) {
+      html += '<div class="answer-note">' + escapeHTML(result.note) + '</div>';
+    }
+    if (result.action) {
+      html += '<div class="answer-action">' + result.action + '</div>';
+    }
+    aiAnswerEl.innerHTML = html;
+
+    if (result.related && result.related.length > 0) {
+      relatedLinks.innerHTML =
+        '<div class="related-heading">Related questions:</div>' +
+        result.related.map(r =>
+          '<button class="related-link" data-query="' + escapeHTML(r.question) + '">' +
+            escapeHTML(r.question) +
+            '<span class="related-cat">' + escapeHTML(r.category) + '</span>' +
+          '</button>'
+        ).join('');
+
+      relatedLinks.querySelectorAll('.related-link').forEach(btn => {
+        btn.addEventListener('click', () => {
+          searchInput.value = btn.dataset.query;
+          filterAndRender();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
       });
-
-      if (!response.ok) {
-        const err = await response.text();
-        throw new Error(`API error (${response.status}): ${err}`);
-      }
-
-      const data = await response.json();
-      const answer = data.choices?.[0]?.message?.content || 'No response generated.';
-      aiAnswerEl.innerHTML = renderMarkdown(answer);
-
-    } catch (error) {
-      console.error('LegalBot error:', error);
-      let errorMsg = 'Sorry, something went wrong generating a response.';
-      if (error.message.includes('401') || error.message.includes('403')) {
-        errorMsg = 'Your GitHub token appears to be invalid or missing the <code>models:read</code> scope. Please update it in AI Settings.';
-      }
-      aiAnswerEl.innerHTML = `<p style="color: var(--red);">${errorMsg}</p>`;
-    } finally {
-      askBtn.disabled = false;
-      askText.textContent = 'Ask LegalBot';
-      askSpinner.classList.add('hidden');
+    } else {
+      relatedLinks.innerHTML = '';
     }
   }
 
-  function buildFAQContext(question) {
-    // Score each FAQ entry by keyword relevance
-    const terms = question.toLowerCase().split(/\s+/).filter(t => t.length > 2);
-    const scored = faqData.map(item => {
-      const haystack = (item.question + ' ' + item.answer).toLowerCase();
-      let score = 0;
-      for (const term of terms) {
-        if (haystack.includes(term)) score++;
-      }
-      return { ...item, score };
-    });
+  // -----------------------------------------------------------------------
+  // Event listeners
+  // -----------------------------------------------------------------------
+  var debounceTimer;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(filterAndRender, 150);
+  });
 
-    // Take top matches (at least 3, up to 8)
-    scored.sort((a, b) => b.score - a.score);
-    const topMatches = scored.filter(s => s.score > 0).slice(0, 8);
-
-    // If very few matches, include all FAQ content
-    if (topMatches.length < 3) {
-      return faqData.map(e => `Q: ${e.question}\nA: ${e.answer}`).join('\n\n---\n\n');
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(debounceTimer);
+      filterAndRender();
     }
+  });
 
-    return topMatches.map(e => `Q: ${e.question}\nA: ${e.answer}`).join('\n\n---\n\n');
-  }
+  askBtn.addEventListener('click', () => {
+    clearTimeout(debounceTimer);
+    filterAndRender();
+  });
 
-  // Simple markdown to HTML renderer
-  function renderMarkdown(md) {
-    let html = escapeHTML(md);
-
-    // Bold: **text**
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-
-    // Italic: *text* (but not inside links)
-    html = html.replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>');
-
-    // Links: [text](url)
-    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-
-    // Bare URLs
-    html = html.replace(/(https?:\/\/[^\s<)]+)/g, (match) => {
-      if (html.indexOf(`href="${match}"`) !== -1) return match;
-      return `<a href="${match}" target="_blank">${match}</a>`;
-    });
-
-    // Bullet lists: lines starting with - or *
-    html = html.replace(/^(\s*[-*])\s+/gm, '&bull; ');
-
-    // Numbered lists: lines starting with 1. 2. etc.
-    html = html.replace(/^(\d+)\.\s+/gm, '$1. ');
-
-    // Paragraphs
-    html = html.replace(/\n\n/g, '</p><p>');
-    html = html.replace(/\n/g, '<br>');
-    html = '<p>' + html + '</p>';
-
-    return html;
-  }
-
-  // -----------------------------------------------------------------------
-  // Initialize
-  // -----------------------------------------------------------------------
-  updateTokenUI();
-  askBtn.disabled = true;
+  searchInput.focus();
   loadFAQ();
 
 })();
